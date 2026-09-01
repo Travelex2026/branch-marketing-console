@@ -30,6 +30,21 @@ async function initDb() {
       )
     `);
   }
+  // Uploaded files (rate card PDFs, asset proofs, etc.) — stored as bytes
+  // directly in Postgres. Simple and works well at solo-tool volume; a size
+  // cap is enforced at the upload route to keep the free database tier happy.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS files (
+      id TEXT PRIMARY KEY,
+      filename TEXT NOT NULL,
+      mimetype TEXT NOT NULL,
+      size INTEGER NOT NULL,
+      data BYTEA NOT NULL,
+      entity_type TEXT,
+      entity_id TEXT,
+      uploaded_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `);
 }
 
 async function seedBranchesIfEmpty(initialBranches) {
@@ -66,4 +81,37 @@ async function deleteRow(table, id) {
   await pool.query(`DELETE FROM ${table} WHERE id = $1`, [id]);
 }
 
-module.exports = { pool, TABLES, initDb, seedBranchesIfEmpty, listRows, insertRow, updateRow, deleteRow };
+// ---- Files ----
+async function insertFile(file) {
+  await pool.query(
+    `INSERT INTO files (id, filename, mimetype, size, data, entity_type, entity_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+    [file.id, file.filename, file.mimetype, file.size, file.data, file.entityType || null, file.entityId || null]
+  );
+  return { id: file.id, filename: file.filename, mimetype: file.mimetype, size: file.size };
+}
+
+async function getFile(id) {
+  const { rows } = await pool.query(
+    "SELECT id, filename, mimetype, size, data FROM files WHERE id = $1",
+    [id]
+  );
+  return rows[0] || null;
+}
+
+async function getFileMeta(id) {
+  const { rows } = await pool.query(
+    "SELECT id, filename, mimetype, size, entity_type, entity_id, uploaded_at FROM files WHERE id = $1",
+    [id]
+  );
+  return rows[0] || null;
+}
+
+async function deleteFile(id) {
+  await pool.query("DELETE FROM files WHERE id = $1", [id]);
+}
+
+module.exports = {
+  pool, TABLES, initDb, seedBranchesIfEmpty, listRows, insertRow, updateRow, deleteRow,
+  insertFile, getFile, getFileMeta, deleteFile
+};
