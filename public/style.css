@@ -231,6 +231,34 @@ table.data tbody tr:last-child td { border-bottom: none; }
 .dash-grid { display: grid; grid-template-columns: 1.3fr 1fr; gap: 1.25rem; }
 @media (max-width: 800px) { .dash-grid { grid-template-columns: 1fr; } }
 
+/* ---- Callout banner (dashboard reminder) ---- */
+.callout { border-left: 3px solid var(--accent-2); background: var(--surface-2); border-radius: 0 var(--radius-m) var(--radius-m) 0; padding: 1rem 1.3rem; margin: 0 0 1.25rem; }
+.callout h4 { margin: 0 0 0.4rem; font-size: 0.95rem; font-weight: 800; }
+.callout p { margin: 0.3rem 0 0.8rem; font-size: 0.86rem; color: var(--ink-2); }
+
+/* ---- Branch Workspace ---- */
+.ws-picker { display: flex; flex-direction: column; gap: 0.3rem; max-width: 420px; margin-bottom: 1.25rem; }
+.ws-picker label { font-size: 0.78rem; font-weight: 700; color: var(--ink-2); }
+.ws-picker select { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-s); padding: 0.55rem 0.7rem; font-size: 0.92rem; }
+.ws-header-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+.ws-header-actions { margin-top: 0.8rem; }
+.ws-contact-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.8rem; margin-top: 0.6rem; }
+@media (max-width: 700px) { .ws-contact-grid { grid-template-columns: 1fr; } }
+.ws-contact-grid input { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-s); padding: 0.5rem 0.6rem; width: 100%; }
+.ws-ratecard { display: flex; align-items: center; gap: 0.7rem; flex-wrap: wrap; background: var(--surface-2); border-radius: var(--radius-s); padding: 0.7rem 0.9rem; margin: 0.8rem 0 1.1rem; font-size: 0.86rem; }
+.ws-default-list { display: flex; flex-direction: column; gap: 0.5rem; }
+.ws-default-row { display: flex; align-items: flex-start; gap: 0.7rem; padding: 0.7rem 0.9rem; border: 1px solid var(--border); border-radius: var(--radius-s); }
+.ws-default-row-pick { cursor: pointer; }
+.ws-default-row-pick:hover { background: var(--surface-2); }
+.ws-default-row-pick input[type="checkbox"] { margin-top: 0.2rem; width: 17px; height: 17px; flex: none; accent-color: var(--accent-2); }
+.ws-default-row-captured { background: var(--surface-2); justify-content: space-between; align-items: center; flex-wrap: wrap; }
+.ws-default-main { flex: 1; font-size: 0.88rem; }
+.ws-default-main p { color: var(--ink-2); }
+.ws-benefit-buttons { margin-top: 1rem; display: flex; gap: 0.6rem; flex-wrap: wrap; }
+.file-current { font-size: 0.8rem; color: var(--ink-2); margin-top: 0.3rem; }
+.file-current a, td a { color: var(--accent-2); text-decoration: none; }
+.file-current a:hover, td a:hover { text-decoration: underline; }
+
 /* ---- Defaults reference cards ---- */
 .defaults-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 0.9rem; }
 .default-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-m); padding: 1rem; box-shadow: var(--shadow); }

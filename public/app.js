@@ -55,7 +55,10 @@
     { type: "Wall Ad / Boom Gate / Parkade Billboard", cost: "Paid - Tenant/Landlord Discounted Rate",
       means: "Paid placement, often billed per fixed booking period (e.g. 2 weeks). May have a preferred production supplier.",
       confirm: "Rate, booking period, preferred supplier, printing/installation cost." },
-    { type: "Audio-in-Mall / Bathroom Advertising", cost: "Paid - Full Rate Card",
+    { type: "Audio-in-Mall Advert", cost: "Paid - Full Rate Card",
+      means: "Usually a specialist media partner, sold in monthly packages by number of plays.",
+      confirm: "Package tiers, minimum spend, production cost." },
+    { type: "Bathroom Advertising", cost: "Paid - Full Rate Card",
       means: "Usually a specialist media partner, sold in monthly packages by number of plays.",
       confirm: "Package tiers, minimum spend, production cost." },
     { type: "Exhibition / Activation Space", cost: "Paid - Tenant/Landlord Discounted Rate",
@@ -80,7 +83,7 @@
     { key: "name", label: "Branch Name", type: "text", span2: true },
     { key: "region", label: "Region / Province", type: "text" },
     { key: "address", label: "Branch Address", type: "textarea", span2: true },
-    { key: "manager", label: "Branch Manager / Contact", type: "text" },
+    { key: "manager", label: "Marketing Contact Name", type: "text" },
     { key: "email", label: "Email", type: "text" },
     { key: "phone", label: "Phone", type: "text" },
     { key: "stage", label: "Engagement Stage", type: "select", options: STAGE_OPTIONS },
@@ -101,6 +104,7 @@
     { key: "meetingDate", label: "Meeting Date (Source)", type: "date" },
     { key: "reviewDate", label: "Review / Expiry Date", type: "date" },
     { key: "capturedBy", label: "Captured By", type: "text" },
+    { key: "fileId", nameKey: "fileName", label: "Supporting Document (PDF or image)", type: "file", span2: true },
     { key: "notes", label: "Notes", type: "textarea", span2: true }
   ];
 
@@ -126,6 +130,7 @@
     { key: "sentBy", label: "Sent By", type: "text" },
     { key: "confirmed", label: "Confirmation Received", type: "select", options: CONFIRMED_OPTIONS },
     { key: "confirmDate", label: "Confirmation Date", type: "date" },
+    { key: "fileId", nameKey: "fileName", label: "Attached File", type: "file", span2: true },
     { key: "notes", label: "Notes", type: "textarea", span2: true }
   ];
 
@@ -152,6 +157,9 @@
   var searchQ = { branches: "", benefits: "", calendar: "", assets: "" };
   var confirmArmed = null; // "entity:id" armed for delete confirm
   var stateLoaded = false;
+  var workspaceBranchId = "";
+  var ALWAYS_FREE_TYPES = ["Social Media Feature", "Newsletter / Email Feature", "Mall Website Feature (Specials / What's On)"];
+  var REMINDER_DAYS = 30;
 
   // ===================== Persistence (talks to the server API) =====================
   function setSaveIndicator(mode, text) {
@@ -185,6 +193,30 @@
   function apiCreate(entity, data) { return apiFetch("/api/" + entity, { method: "POST", body: JSON.stringify(data) }); }
   function apiUpdate(entity, id, data) { return apiFetch("/api/" + entity + "/" + encodeURIComponent(id), { method: "PUT", body: JSON.stringify(data) }); }
   function apiDelete(entity, id) { return apiFetch("/api/" + entity + "/" + encodeURIComponent(id), { method: "DELETE" }); }
+  function apiBulkCreate(entity, items) { return apiFetch("/api/" + entity + "/bulk", { method: "POST", body: JSON.stringify({ items: items }) }); }
+
+  function uploadFile(file, entityType, entityId) {
+    var fd = new FormData();
+    fd.append("file", file);
+    if (entityType) fd.append("entityType", entityType);
+    if (entityId) fd.append("entityId", entityId);
+    setSaveIndicator("saving", "Uploading…");
+    return fetch("/api/files", { method: "POST", credentials: "include", body: fd }).then(function (res) {
+      if (res.status === 401) { window.location.href = "/login.html"; throw new Error("Signed out"); }
+      if (!res.ok) {
+        return res.json().catch(function () { return {}; }).then(function (body) {
+          throw new Error(body.error || "Upload failed");
+        });
+      }
+      setSaveIndicator("saved", "Saved");
+      return res.json();
+    });
+  }
+
+  function fileLink(fileId, fileName) {
+    if (!fileId) return "—";
+    return '<a href="/api/files/' + encodeURIComponent(fileId) + '" target="_blank" rel="noopener">📎 ' + esc(fileName || "View file") + "</a>";
+  }
 
   function handleApiError(err) {
     console.warn(err);
@@ -306,7 +338,7 @@
       { key: "name", label: "Branch" },
       { key: "region", label: "Region" },
       { key: "stage", label: "Stage", render: function (r) { return pill(r.stage || "Not Contacted", stagePillClass(r.stage)); } },
-      { key: "manager", label: "Manager" },
+      { key: "manager", label: "Marketing Contact" },
       { key: "nextAction", label: "Next Action" },
       { key: "nextActionDate", label: "Due", render: function (r) { return esc(fmtDate(r.nextActionDate)) || "—"; } }
     ];
@@ -324,7 +356,8 @@
       { key: "benefitType", label: "Benefit Type" },
       { key: "costType", label: "Cost Type", render: function (r) { return pill(r.costType, costPillClass(r.costType)); } },
       { key: "status", label: "Status", render: function (r) { return pill(r.status || "—", benefitStatusPillClass(r.status)); } },
-      { key: "reviewDate", label: "Review", render: function (r) { return esc(fmtDate(r.reviewDate)) || "—"; } }
+      { key: "reviewDate", label: "Review", render: function (r) { return esc(fmtDate(r.reviewDate)) || "—"; } },
+      { key: "fileId", label: "Doc", render: function (r) { return fileLink(r.fileId, r.fileName); } }
     ];
     return renderTableSection({
       entity: "benefits", title: "Lease-Based Marketing Benefits",
@@ -356,13 +389,128 @@
       { key: "branchName", label: "Branch" },
       { key: "assetName", label: "Asset" },
       { key: "channel", label: "Channel" },
-      { key: "confirmed", label: "Confirmed", render: function (r) { return pill(r.confirmed || "—", confirmedPillClass(r.confirmed)); } }
+      { key: "confirmed", label: "Confirmed", render: function (r) { return pill(r.confirmed || "—", confirmedPillClass(r.confirmed)); } },
+      { key: "fileId", label: "File", render: function (r) { return fileLink(r.fileId, r.fileName); } }
     ];
     return renderTableSection({
       entity: "assets", title: "Assets Sent Log",
       desc: "Every asset actually sent, to which branch, and whether it was confirmed received or displayed.",
       columns: columns, rows: rows, addLabel: "Log a Send"
     });
+  }
+
+  function daysAgo(dateStr) {
+    if (!dateStr) return null;
+    var d = new Date(dateStr + "T00:00:00");
+    if (isNaN(d.getTime())) return null;
+    return Math.floor((Date.now() - d.getTime()) / 86400000);
+  }
+
+  function viewWorkspace() {
+    if (!stateLoaded) return '<div class="loading-note">Loading your data…</div>';
+
+    var branches = STATE.branches.slice().sort(function (a, b) { return a.name.localeCompare(b.name); });
+    var html = '<div class="section-head"><div><h2>Branch Workspace</h2>' +
+      "<p>Pick a branch to capture its marketing contact, log which lease benefits apply, and see its full history in one place.</p></div></div>";
+
+    html += '<div class="ws-picker"><label for="workspaceBranchSelect">Branch</label>' +
+      '<select id="workspaceBranchSelect" data-role="workspace-branch-select">' +
+      '<option value="">Choose a branch…</option>' +
+      branches.map(function (b) {
+        return '<option value="' + esc(b.id) + '"' + (b.id === workspaceBranchId ? " selected" : "") + '>' + esc(b.name) + " — " + esc(b.region) + "</option>";
+      }).join("") +
+      "</select></div>";
+
+    if (!workspaceBranchId) {
+      html += '<div class="loading-note">Choose a branch above to get started.</div>';
+      return html;
+    }
+
+    var branch = STATE.branches.find(function (b) { return b.id === workspaceBranchId; });
+    if (!branch) {
+      workspaceBranchId = "";
+      html += '<div class="loading-note">That branch is no longer available.</div>';
+      return html;
+    }
+
+    var branchBenefits = STATE.benefits.filter(function (x) { return x.branchName === branch.name; });
+    var branchAssets = STATE.assets.filter(function (x) { return x.branchName === branch.name; })
+      .sort(function (a, b) { return (b.dateSent || "").localeCompare(a.dateSent || ""); });
+
+    // ---- Header ----
+    html += '<div class="ws-header panel">' +
+      '<div class="ws-header-top"><div><h3 style="margin-bottom:0.15rem;">' + esc(branch.name) + "</h3>" +
+      '<p style="margin:0;color:var(--ink-3);font-size:0.82rem;">' + esc(branch.region) + " · " + esc(branch.address) + "</p></div>" +
+      pill(branch.stage || "Not Contacted", stagePillClass(branch.stage)) +
+      "</div>" +
+      '<div class="ws-header-actions"><button class="btn btn-ghost btn-sm" data-action="edit" data-entity="branches" data-id="' + esc(branch.id) + '">Edit stage &amp; notes</button></div>' +
+      "</div>";
+
+    // ---- Marketing contact ----
+    html += '<div class="panel"><h3>Marketing Contact</h3>' +
+      '<p style="margin-top:-0.3rem;">Capture this the moment you start talking to a branch — it\'s the first thing you\'ll want on hand later.</p>' +
+      '<div class="ws-contact-grid">' +
+      '<div class="form-field"><label for="wsContactName">Contact Name</label><input type="text" id="wsContactName" value="' + esc(branch.manager) + '"></div>' +
+      '<div class="form-field"><label for="wsContactEmail">Email</label><input type="text" id="wsContactEmail" value="' + esc(branch.email) + '"></div>' +
+      '<div class="form-field"><label for="wsContactPhone">Phone</label><input type="text" id="wsContactPhone" value="' + esc(branch.phone) + '"></div>' +
+      "</div>" +
+      '<button class="btn btn-primary btn-sm" data-action="workspace-save-contact" data-id="' + esc(branch.id) + '" style="margin-top:0.8rem;">Save contact</button>' +
+      "</div>";
+
+    // ---- Lease benefits capture ----
+    html += '<div class="panel"><h3>Lease Marketing Benefits</h3>' +
+      '<p style="margin-top:-0.3rem;">Tick what applies to this branch — Social Media, Newsletter and Mall Website are pre-ticked since they\'re free in almost every lease. Add the rest as they\'re confirmed; different benefits often get confirmed at different times, so come back and tick more whenever.</p>';
+
+    html += '<div class="ws-ratecard">' +
+      (branch.rateCardFileId
+        ? '<div>Rate card on file: ' + fileLink(branch.rateCardFileId, branch.rateCardFileName) + "</div>"
+        : '<div style="color:var(--ink-3);font-size:0.85rem;">No rate card uploaded yet.</div>') +
+      '<input type="file" id="wsRateCardFile" accept=".pdf,.jpg,.jpeg,.png,.webp">' +
+      '<button class="btn btn-ghost btn-sm" data-action="workspace-upload-ratecard" data-id="' + esc(branch.id) + '">Upload rate card (PDF)</button>' +
+      "</div>";
+
+    html += '<div class="ws-default-list">';
+    DEFAULTS.forEach(function (d, idx) {
+      var captured = branchBenefits.find(function (b) { return b.benefitType === d.type; });
+      if (captured) {
+        html += '<div class="ws-default-row ws-default-row-captured">' +
+          '<div class="ws-default-main"><strong>' + esc(d.type) + "</strong> " + pill(captured.status || "Confirmed", benefitStatusPillClass(captured.status)) + " " + pill(captured.costType, costPillClass(captured.costType)) + "</div>" +
+          '<div class="ws-default-actions">' +
+          '<button class="btn btn-ghost btn-sm" data-action="edit" data-entity="benefits" data-id="' + esc(captured.id) + '">Edit</button> ' +
+          '<button class="btn btn-ghost btn-sm" data-action="delete" data-entity="benefits" data-id="' + esc(captured.id) + '">Delete</button>' +
+          "</div></div>";
+      } else {
+        var preChecked = ALWAYS_FREE_TYPES.indexOf(d.type) !== -1;
+        html += '<label class="ws-default-row ws-default-row-pick">' +
+          '<input type="checkbox" data-role="default-check" data-index="' + idx + '"' + (preChecked ? " checked" : "") + ">" +
+          '<div class="ws-default-main"><strong>' + esc(d.type) + "</strong> " + pill(d.cost, costPillClass(d.cost)) +
+          '<p style="margin:0.25rem 0 0;font-size:0.82rem;">' + esc(d.means) + "</p></div>" +
+          "</label>";
+      }
+    });
+    html += "</div>";
+    html += '<div class="ws-benefit-buttons">' +
+      '<button class="btn btn-primary btn-sm" data-action="capture-defaults" data-id="' + esc(branch.id) + '">Capture ticked benefits</button> ' +
+      '<button class="btn btn-ghost btn-sm" data-action="add" data-entity="benefits" data-prefill-branch="' + esc(branch.name) + '">+ Add a different benefit</button>' +
+      "</div></div>";
+
+    // ---- Assets sent history ----
+    html += '<div class="panel"><h3>Assets Sent — History</h3>';
+    if (!branchAssets.length) {
+      html += '<p style="margin-top:-0.3rem;">Nothing logged for this branch yet.</p>';
+    } else {
+      html += '<div class="table-wrap"><table class="data"><thead><tr><th>Sent</th><th>Asset</th><th>Channel</th><th>Confirmed</th><th>File</th><th class="col-actions">Actions</th></tr></thead><tbody>';
+      branchAssets.forEach(function (a) {
+        html += "<tr><td>" + (esc(fmtDate(a.dateSent)) || "—") + "</td><td>" + esc(a.assetName || "—") + "</td><td>" + esc(a.channel || "—") + "</td><td>" +
+          pill(a.confirmed || "—", confirmedPillClass(a.confirmed)) + "</td><td>" + fileLink(a.fileId, a.fileName) + '</td><td class="col-actions">' +
+          '<button class="btn btn-ghost btn-sm" data-action="edit" data-entity="assets" data-id="' + esc(a.id) + '">Edit</button> ' +
+          '<button class="btn btn-ghost btn-sm" data-action="delete" data-entity="assets" data-id="' + esc(a.id) + '">Delete</button></td></tr>';
+      });
+      html += "</tbody></table></div>";
+    }
+    html += '<button class="btn btn-primary btn-sm" data-action="add" data-entity="assets" data-prefill-branch="' + esc(branch.name) + '" style="margin-top:0.8rem;">+ Log a send</button></div>';
+
+    return html;
   }
 
   function viewDefaults() {
@@ -405,6 +553,17 @@
     var onboarded = stageCounts["Onboarded - Active"];
 
     var html = '<div class="section-head"><div><h2>Dashboard</h2><p>Live summary — pulled from Branches, Lease Benefits, Content Calendar and Assets Sent.</p></div></div>';
+
+    var sendDates = STATE.calendar.map(function (c) { return c.sendDate; }).filter(Boolean).sort();
+    var lastSend = sendDates.length ? sendDates[sendDates.length - 1] : null;
+    var sinceLast = daysAgo(lastSend);
+    if (sinceLast === null || sinceLast >= REMINDER_DAYS) {
+      html += '<div class="callout">' +
+        "<h4>" + (lastSend ? "It's been " + sinceLast + " days since your last logged campaign" : "No campaigns logged yet") + "</h4>" +
+        "<p>Time to plan the next round of marketing activity and log it in the Content Calendar with a submission due date.</p>" +
+        '<button class="btn btn-primary btn-sm" data-action="goto-tab" data-tab="calendar">Go to Content Calendar</button>' +
+        "</div>";
+    }
 
     html += '<div class="kpi-grid">' +
       kpiTile("Total Branches", STATE.branches.length) +
@@ -452,7 +611,7 @@
   function render() {
     var tabs = document.querySelectorAll(".tab-btn");
     tabs.forEach(function (t) { t.classList.toggle("active", t.dataset.tab === activeTab); });
-    var views = { dashboard: viewDashboard, branches: viewBranches, benefits: viewBenefits, calendar: viewCalendar, assets: viewAssets, defaults: viewDefaults };
+    var views = { dashboard: viewDashboard, workspace: viewWorkspace, branches: viewBranches, benefits: viewBenefits, calendar: viewCalendar, assets: viewAssets, defaults: viewDefaults };
     Object.keys(views).forEach(function (key) {
       var el = document.getElementById("view-" + key);
       if (key === activeTab) {
@@ -472,10 +631,10 @@
   }
 
   // ===================== Modal / CRUD =====================
-  function openModal(entity, id) {
+  function openModal(entity, id, prefill) {
     var conf = ENTITIES[entity];
     var isNew = !id;
-    var row = isNew ? {} : STATE[entity].find(function (r) { return r.id === id; });
+    var row = isNew ? Object.assign({}, prefill || {}) : STATE[entity].find(function (r) { return r.id === id; });
     if (!row) return;
     var root = document.getElementById("modalRoot");
     var html = '<div class="modal-overlay" data-role="overlay"><div class="modal-panel" role="dialog" aria-modal="true">' +
@@ -496,6 +655,9 @@
         html += '<input type="date" id="f_' + f.key + '" name="' + f.key + '" value="' + esc(val) + '">';
       } else if (f.type === "branchpicker") {
         html += '<input type="text" id="f_' + f.key + '" name="' + f.key + '" value="' + esc(val) + '" list="branchNamesList" placeholder="Start typing a branch name…">';
+      } else if (f.type === "file") {
+        html += '<input type="file" id="f_' + f.key + '" accept=".pdf,.jpg,.jpeg,.png,.webp">' +
+          (val ? '<div class="file-current">Current: ' + fileLink(val, row[f.nameKey]) + " — choosing a new file replaces it</div>" : "");
       } else {
         html += '<input type="text" id="f_' + f.key + '" name="' + f.key + '" value="' + esc(val) + '"' +
           (f.readonly ? " disabled" : "") + (f.placeholder ? ' placeholder="' + esc(f.placeholder) + '"' : "") + ">";
@@ -514,38 +676,49 @@
     form.addEventListener("submit", function (e) {
       e.preventDefault();
       var data = {};
+      var fileFields = [];
       conf.schema.forEach(function (f) {
         if (f.readonly) return;
+        if (f.type === "file") { fileFields.push(f); return; }
         var el = document.getElementById("f_" + f.key);
         data[f.key] = el ? el.value : "";
       });
+
       var submitBtn = form.querySelector('button[type="submit"]');
       submitBtn.disabled = true;
       submitBtn.textContent = "Saving…";
 
-      if (isNew) {
-        apiCreate(entity, data).then(function (created) {
-          STATE[entity].push(created);
-          toast(conf.label + " added");
-          closeModal();
-          render();
-        }).catch(function (err) {
-          handleApiError(err);
-          submitBtn.disabled = false;
-          submitBtn.textContent = "Save";
+      var pendingUploads = fileFields.map(function (f) {
+        var el = document.getElementById("f_" + f.key);
+        var chosen = el && el.files && el.files[0];
+        if (!chosen) return Promise.resolve(null);
+        return uploadFile(chosen, entity, row.id || "new").then(function (saved) {
+          data[f.key] = saved.id;
+          data[f.nameKey] = saved.filename;
         });
-      } else {
-        apiUpdate(entity, row.id, data).then(function (updated) {
-          Object.assign(row, updated);
-          toast(conf.label + " updated");
-          closeModal();
-          render();
-        }).catch(function (err) {
-          handleApiError(err);
-          submitBtn.disabled = false;
-          submitBtn.textContent = "Save";
-        });
-      }
+      });
+
+      Promise.all(pendingUploads).then(function () {
+        if (isNew) {
+          return apiCreate(entity, data).then(function (created) {
+            STATE[entity].push(created);
+            toast(conf.label + " added");
+            closeModal();
+            render();
+          });
+        } else {
+          return apiUpdate(entity, row.id, data).then(function (updated) {
+            Object.assign(row, updated);
+            toast(conf.label + " updated");
+            closeModal();
+            render();
+          });
+        }
+      }).catch(function (err) {
+        handleApiError(err);
+        submitBtn.disabled = false;
+        submitBtn.textContent = "Save";
+      });
     });
 
     root.querySelector('[data-role="cancel"]').addEventListener("click", closeModal);
@@ -582,7 +755,11 @@
   // ===================== Event delegation =====================
   function onMainClick(e) {
     var addBtn = e.target.closest('[data-action="add"]');
-    if (addBtn) { openModal(addBtn.dataset.entity, null); return; }
+    if (addBtn) {
+      var prefill = addBtn.dataset.prefillBranch ? { branchName: addBtn.dataset.prefillBranch } : null;
+      openModal(addBtn.dataset.entity, null, prefill);
+      return;
+    }
 
     var editBtn = e.target.closest('[data-action="edit"]');
     if (editBtn) { openModal(editBtn.dataset.entity, editBtn.dataset.id); return; }
@@ -598,6 +775,86 @@
         setTimeout(function () { if (confirmArmed === key) { confirmArmed = null; render(); } }, 4000);
       }
       return;
+    }
+
+    var gotoBtn = e.target.closest('[data-action="goto-tab"]');
+    if (gotoBtn) { activeTab = gotoBtn.dataset.tab; confirmArmed = null; render(); return; }
+
+    var saveContactBtn = e.target.closest('[data-action="workspace-save-contact"]');
+    if (saveContactBtn) {
+      var branchId = saveContactBtn.dataset.id;
+      var branchRow = STATE.branches.find(function (b) { return b.id === branchId; });
+      if (!branchRow) return;
+      var patch = {
+        manager: (document.getElementById("wsContactName") || {}).value || "",
+        email: (document.getElementById("wsContactEmail") || {}).value || "",
+        phone: (document.getElementById("wsContactPhone") || {}).value || ""
+      };
+      saveContactBtn.disabled = true;
+      apiUpdate("branches", branchId, patch).then(function (updated) {
+        Object.assign(branchRow, updated);
+        toast("Marketing contact saved");
+        render();
+      }).catch(function (err) {
+        handleApiError(err);
+        saveContactBtn.disabled = false;
+      });
+      return;
+    }
+
+    var uploadRateCardBtn = e.target.closest('[data-action="workspace-upload-ratecard"]');
+    if (uploadRateCardBtn) {
+      var rcBranchId = uploadRateCardBtn.dataset.id;
+      var rcBranchRow = STATE.branches.find(function (b) { return b.id === rcBranchId; });
+      var fileEl = document.getElementById("wsRateCardFile");
+      var chosen = fileEl && fileEl.files && fileEl.files[0];
+      if (!rcBranchRow || !chosen) { toast("Choose a file first"); return; }
+      uploadRateCardBtn.disabled = true;
+      uploadFile(chosen, "branches", rcBranchId).then(function (saved) {
+        return apiUpdate("branches", rcBranchId, { rateCardFileId: saved.id, rateCardFileName: saved.filename });
+      }).then(function (updated) {
+        Object.assign(rcBranchRow, updated);
+        toast("Rate card uploaded");
+        render();
+      }).catch(function (err) {
+        handleApiError(err);
+        uploadRateCardBtn.disabled = false;
+      });
+      return;
+    }
+
+    var captureBtn = e.target.closest('[data-action="capture-defaults"]');
+    if (captureBtn) {
+      var cBranchId = captureBtn.dataset.id;
+      var cBranchRow = STATE.branches.find(function (b) { return b.id === cBranchId; });
+      if (!cBranchRow) return;
+      var checks = document.querySelectorAll('[data-role="default-check"]:checked');
+      if (!checks.length) { toast("Tick at least one benefit first"); return; }
+      var items = Array.prototype.map.call(checks, function (cb) {
+        var d = DEFAULTS[Number(cb.dataset.index)];
+        return {
+          branchName: cBranchRow.name, benefitType: d.type, costType: d.cost, details: d.means,
+          value: "", status: "Confirmed", meetingDate: "", reviewDate: "", capturedBy: "", notes: ""
+        };
+      });
+      captureBtn.disabled = true;
+      apiBulkCreate("benefits", items).then(function (created) {
+        created.forEach(function (row) { STATE.benefits.push(row); });
+        toast((created.length === 1 ? "1 benefit" : created.length + " benefits") + " captured");
+        render();
+      }).catch(function (err) {
+        handleApiError(err);
+        captureBtn.disabled = false;
+      });
+      return;
+    }
+  }
+
+  function onMainChange(e) {
+    var branchSelect = e.target.closest('[data-role="workspace-branch-select"]');
+    if (branchSelect) {
+      workspaceBranchId = branchSelect.value;
+      render();
     }
   }
 
@@ -644,6 +901,7 @@
     initTopbarActions();
     document.getElementById("main").addEventListener("click", onMainClick);
     document.getElementById("main").addEventListener("input", onMainInput);
+    document.getElementById("main").addEventListener("change", onMainChange);
     render();
     loadState().then(render);
   }
