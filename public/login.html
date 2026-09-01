@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800&display=swap">
+<title>Sign in — Branch Marketing Console</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body class="login-body">
+  <div class="login-card">
+    <div class="brand">
+      <span class="org">Travelex / Tourvest Forex</span>
+      <h1>Branch Marketing Console</h1>
+    </div>
+    <form id="loginForm">
+      <div>
+        <label for="password">Password</label>
+        <input type="password" id="password" name="password" autocomplete="current-password" autofocus required>
+      </div>
+      <div class="login-error" id="loginError" hidden></div>
+      <button type="submit" class="btn btn-primary" id="loginBtn">Sign in</button>
+    </form>
+  </div>
+  <script src="/login.js"></script>
+</body>
+</html>
